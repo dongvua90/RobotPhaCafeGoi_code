@@ -1,0 +1,13 @@
+../Core/Src/AccelStepper.c:4:6:AccelStepper_init	2
+../Core/Src/AccelStepper.c:32:6:setMaxSpeed	4
+../Core/Src/AccelStepper.c:48:6:setAcceleration	4
+../Core/Src/AccelStepper.c:65:6:computeNewSpeed	20
+../Core/Src/AccelStepper.c:128:6:distanceToGo	1
+../Core/Src/AccelStepper.c:133:6:run	19
+../Core/Src/AccelStepper.c:177:6:runSpeed	7
+../Core/Src/AccelStepper.c:204:6:step	7
+../Core/Src/AccelStepper.c:222:6:isRunning	3
+../Core/Src/AccelStepper.c:226:6:setCurentPos	1
+../Core/Src/AccelStepper.c:230:6:moveTo	2
+../Core/Src/AccelStepper.c:239:6:setSpeed	6
+../Core/Src/AccelStepper.c:253:6:enableStepper	2

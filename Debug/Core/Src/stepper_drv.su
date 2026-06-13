@@ -1,0 +1,15 @@
+../Core/Src/stepper_drv.c:11:13:Stepper_SetPulseEnabled	16	static
+../Core/Src/stepper_drv.c:31:13:Stepper_UpdateDirPin	24	static
+../Core/Src/stepper_drv.c:38:17:Stepper_ClampArr	24	static
+../Core/Src/stepper_drv.c:56:6:Stepper_Init	32	static
+../Core/Src/stepper_drv.c:77:6:Stepper_StartPwm	16	static
+../Core/Src/stepper_drv.c:85:6:Stepper_Enable	24	static
+../Core/Src/stepper_drv.c:98:6:Stepper_MoveTo	16	static
+../Core/Src/stepper_drv.c:113:6:Stepper_Home	16	static
+../Core/Src/stepper_drv.c:129:6:Stepper_Stop	16	static
+../Core/Src/stepper_drv.c:136:6:Stepper_ClearError	16	static
+../Core/Src/stepper_drv.c:144:6:Stepper_IsBusy	16	static
+../Core/Src/stepper_drv.c:151:6:Stepper_IsIdle	16	static
+../Core/Src/stepper_drv.c:156:6:Stepper_HasError	16	static
+../Core/Src/stepper_drv.c:161:6:Stepper_Process1ms	48	static
+../Core/Src/stepper_drv.c:241:6:Stepper_OnPulseISR	16	static

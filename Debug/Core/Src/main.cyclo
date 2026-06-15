@@ -1,3 +1,13 @@
-../Core/Src/main.c:77:5:main	7
-../Core/Src/main.c:158:6:SystemClock_Config	3
-../Core/Src/main.c:201:6:Error_Handler	1
+../Core/Src/main.c:93:6:InitRcServos	1
+../Core/Src/main.c:107:6:khaylatup	1
+../Core/Src/main.c:113:6:khayLatngua	1
+../Core/Src/main.c:119:6:khayLock	1
+../Core/Src/main.c:125:6:keocat	1
+../Core/Src/main.c:132:6:catMiengGoi	1
+../Core/Src/main.c:147:6:khayRung	1
+../Core/Src/main.c:162:6:InitMotorJ1	1
+../Core/Src/main.c:188:6:Brewing	3
+../Core/Src/main.c:207:5:main	7
+../Core/Src/main.c:288:6:SystemClock_Config	3
+../Core/Src/main.c:325:6:HAL_TIM_PWM_PulseFinishedCallback	3
+../Core/Src/main.c:341:6:Error_Handler	1

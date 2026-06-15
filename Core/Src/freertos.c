@@ -65,6 +65,20 @@ typedef enum {
     UI_SYSTEM_INFO
 } UiState_t;
 
+typedef enum {
+    BREW_PHASE_IDLE = 0,
+    BREW_PHASE_HOME_AXES,
+    BREW_PHASE_MOVE_TO_PACKET,
+    BREW_PHASE_CUT_PACKET,
+    BREW_PHASE_DISPENSE_DOWN,
+    BREW_PHASE_DISPENSE_UP,
+    BREW_PHASE_ADD_WATER,
+    BREW_PHASE_MIXING,
+    BREW_PHASE_FINISH,
+    BREW_PHASE_DONE,
+    BREW_PHASE_ERROR
+} BrewPhase_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -86,10 +100,24 @@ typedef enum {
 #define BOOT_TIMEOUT_MS       2000U
 #define BREW_RENDER_MS        120U
 
+#define SERVO_PULSE_PUSH_US   2100U
+#define SERVO_PULSE_PULL_US   900U
+#define SERVO_PULSE_HOLD_US   1500U
+
+#define BREW_CUT_STAGE_MS     220U
+#define BREW_FINISH_MS        350U
+#define BREW_MIX_TIME_MS      2500U
+#define BREW_WATER_PER_ML_MS  45U
+#define BREW_MIN_WATER_MS     2500U
+#define BREW_J2_DOWN_STEPS    1400L
+#define BREW_J2_UP_STEPS      5L
+
 #define SENSOR_WATER_OK_LEVEL    GPIO_PIN_SET
 #define SENSOR_CUP_PRESENT_LEVEL GPIO_PIN_RESET
 
-const long offsetToHome = 470;
+#define SERVO_LATGOI_POS_LOCK 2300
+
+const long offsetToHome = 420;
 const long stepSpaceKhay = 1333;
 /* USER CODE END PD */
 
@@ -120,6 +148,11 @@ static TickType_t s_stateTick = 0U;
 static TickType_t s_lastRenderTick = 0U;
 static TickType_t s_brewStartTick = 0U;
 static uint32_t s_brewDurationMs = 12000U;
+static volatile BrewPhase_t s_brewPhase = BREW_PHASE_IDLE;
+static TickType_t s_brewPhaseTick = 0U;
+static volatile uint8_t s_brewUiStep = 0U;
+static volatile uint8_t s_brewProgressPct = 0U;
+static uint8_t s_brewCutStage = 0U;
 
 static const uint16_t s_sizeMl[COFFEE_SIZE_COUNT] = {100U, 150U, 200U};
 static const char *s_sizeName[COFFEE_SIZE_COUNT] = {"SMALL", "MEDIUM", "LARGE"};
@@ -139,8 +172,10 @@ static uint8_t s_packetNv = PACKET_MAX;
 osThreadId defaultTaskHandle;
 osThreadId j1TaskHandle;
 osThreadId j2TaskHandle;
+osThreadId BrewingtaskHandle;
 osSemaphoreId binarySem_motorJ1Handle;
 osSemaphoreId binarySem_motorJ2Handle;
+osSemaphoreId binarySem_brewingHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -172,9 +207,18 @@ static void Ui_RenderSettings(void);
 static void Ui_RenderPacketEditor(void);
 static void Ui_RenderSystemInfo(void);
 static void Ui_RenderCleaning(void);
+static HAL_StatusTypeDef Ui_OledUpdateRecover(void);
 static void Ui_EnterState(UiState_t next);
 static void Ui_RenderCurrent(void);
 static void Ui_HandleState(void);
+static void Brew_StopAllActuators(void);
+static void Brew_ResetPacketServos(void);
+static void Brew_Start(void);
+static void Brew_Abort(void);
+static void Brew_Process(void);
+static void Motion_PauseNonStepperTasks(void);
+static void Motion_ResumeNonStepperTasks(void);
+static void Motion_WaitJ1DoneExclusive(void);
 
 void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
 {
@@ -204,8 +248,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 void StartDefaultTask(void const * argument);
 void StartTaskJ1(void const * argument);
 void StartTaskJ2(void const * argument);
+void StartTaskBrewing(void const * argument);
 
-extern void MX_USB_DEVICE_Init(void);
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /* GetIdleTaskMemory prototype (linked to static allocation support) */
@@ -248,6 +292,10 @@ void MX_FREERTOS_Init(void) {
   osSemaphoreDef(binarySem_motorJ2);
   binarySem_motorJ2Handle = osSemaphoreCreate(osSemaphore(binarySem_motorJ2), 1);
 
+  /* definition and creation of binarySem_brewing */
+  osSemaphoreDef(binarySem_brewing);
+  binarySem_brewingHandle = osSemaphoreCreate(osSemaphore(binarySem_brewing), 1);
+
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
   /* USER CODE END RTOS_SEMAPHORES */
@@ -262,16 +310,20 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 1200);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* definition and creation of j1Task */
-  osThreadDef(j1Task, StartTaskJ1, osPriorityHigh, 0, 512);
+    osThreadDef(j1Task, StartTaskJ1, osPriorityRealtime, 0, 512);
   j1TaskHandle = osThreadCreate(osThread(j1Task), NULL);
 
   /* definition and creation of j2Task */
-  osThreadDef(j2Task, StartTaskJ2, osPriorityHigh, 0, 512);
+    osThreadDef(j2Task, StartTaskJ2, osPriorityRealtime, 0, 512);
   j2TaskHandle = osThreadCreate(osThread(j2Task), NULL);
+
+  /* definition and creation of Brewingtask */
+  osThreadDef(Brewingtask, StartTaskBrewing, osPriorityNormal, 0, 1024);
+  BrewingtaskHandle = osThreadCreate(osThread(Brewingtask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -448,6 +500,251 @@ static OledCafeLevel_t Ui_SizeToLevel(CoffeeSize_t size)
     }
 }
 
+static void Brew_StopAllActuators(void)
+{
+    HAL_GPIO_WritePin(MOTOR_KHUAY_GPIO_Port, MOTOR_KHUAY_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(PUMP_GPIO_Port, PUMP_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(BOIL_GPIO_Port, BOIL_Pin, GPIO_PIN_RESET);
+    Stepper_Stop(&motor_j1);
+    Stepper_Stop(&motor_j2);
+    Stepper_Enable(&motor_j1, false);
+    Stepper_Enable(&motor_j2, false);
+}
+
+static void Brew_ResetPacketServos(void)
+{
+    TIM1->CCR1 = 0U;
+    TIM1->CCR2 = 0U;
+    TIM1->CCR3 = 0U;
+}
+
+static void Brew_Start(void)
+{
+    s_brewStartTick = xTaskGetTickCount();
+    s_brewPhaseTick = s_brewStartTick;
+    s_brewPhase = BREW_PHASE_HOME_AXES;
+    s_brewUiStep = 0U;
+    s_brewProgressPct = 0U;
+    s_brewCutStage = 0U;
+
+    Stepper_ClearError(&motor_j1);
+    Stepper_ClearError(&motor_j2);
+    Brew_StopAllActuators();
+    Brew_ResetPacketServos();
+
+    osSemaphoreRelease(binarySem_brewingHandle);	// giải phong semaphore bật task brewing
+
+}
+
+static void Brew_Abort(void)
+{
+    s_brewPhase = BREW_PHASE_IDLE;
+    s_brewUiStep = 0U;
+    s_brewProgressPct = 0U;
+    Brew_StopAllActuators();
+    Brew_ResetPacketServos();
+}
+
+static void Brew_Process(void)
+{
+    TickType_t now = xTaskGetTickCount();
+    uint32_t phaseMs = (uint32_t)(now - s_brewPhaseTick) * (uint32_t)portTICK_PERIOD_MS;
+    uint32_t waterMs = (uint32_t)s_sizeMl[s_homeSize] * BREW_WATER_PER_ML_MS;
+    int32_t packetIdx;
+    int32_t packetTarget;
+
+    if (waterMs < BREW_MIN_WATER_MS) {
+        waterMs = BREW_MIN_WATER_MS;
+    }
+
+    if (Stepper_HasError(&motor_j1) || Stepper_HasError(&motor_j2)) {
+        s_brewPhase = BREW_PHASE_ERROR;
+    }
+
+    switch (s_brewPhase) {
+    case BREW_PHASE_IDLE:
+    case BREW_PHASE_DONE:
+    case BREW_PHASE_ERROR:
+        break;
+
+    case BREW_PHASE_HOME_AXES:
+        s_brewUiStep = 0U;
+        s_brewPhase = BREW_PHASE_MOVE_TO_PACKET;
+        break;
+
+    case BREW_PHASE_MOVE_TO_PACKET:
+        s_brewUiStep = 0U;
+        s_brewProgressPct = 18U;
+        packetIdx = (int32_t)PACKET_MAX - (int32_t)s_packetCount;
+        if (packetIdx < 0) {
+            packetIdx = 0;
+        }
+        if (packetIdx > ((int32_t)PACKET_MAX - 1)) {
+            packetIdx = (int32_t)PACKET_MAX - 1;
+        }
+        packetTarget = (int32_t)offsetToHome + (packetIdx * (int32_t)stepSpaceKhay);
+
+        if (Stepper_IsIdle(&motor_j1) &&  phaseMs < 300U) {
+        	motor_j1.cfg.homeOffset = packetTarget;			// thiết lập offset chính là khoảng cách đến gói. mỗi lần di chuyển đến gói sẽ tiến hành homming
+            (void)Stepper_Home(&motor_j1);
+        }
+        if (Stepper_IsIdle(&motor_j1) && phaseMs > 1000U) {
+        	s_brewPhase = BREW_PHASE_CUT_PACKET;
+//        	for(int i=0;i<packetIdx*2;i++){
+//                 		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+//                 		osDelay(1000);
+//                 	}
+        }
+        break;
+
+    case BREW_PHASE_CUT_PACKET:
+        s_brewUiStep = 1U;
+        if (s_brewCutStage == 0U) {
+            s_brewProgressPct = 26U;
+            TIM1->CCR3 = SERVO_PULSE_PUSH_US;
+            s_brewCutStage = 1U;
+            s_brewPhaseTick = now;
+        } else if (s_brewCutStage == 1U && phaseMs >= BREW_CUT_STAGE_MS) {
+            s_brewProgressPct = 31U;
+            TIM1->CCR1 = SERVO_PULSE_PUSH_US;
+            TIM1->CCR2 = SERVO_PULSE_PULL_US;
+            s_brewCutStage = 2U;
+            s_brewPhaseTick = now;
+        } else if (s_brewCutStage == 2U && phaseMs >= BREW_CUT_STAGE_MS) {
+            s_brewProgressPct = 36U;
+            TIM1->CCR1 = SERVO_PULSE_HOLD_US;
+            TIM1->CCR2 = SERVO_PULSE_HOLD_US;
+            TIM1->CCR3 = SERVO_PULSE_PULL_US;
+            s_brewCutStage = 3U;
+            s_brewPhaseTick = now;
+        } else if (s_brewCutStage == 3U && phaseMs >= BREW_CUT_STAGE_MS) {
+            Brew_ResetPacketServos();
+            s_brewPhase = BREW_PHASE_DISPENSE_DOWN;
+            s_brewPhaseTick = now;
+        }
+
+        //
+//        khayLock();
+//        catMiengGoi();
+        break;
+
+    case BREW_PHASE_DISPENSE_DOWN:
+        s_brewUiStep = 2U;
+        s_brewProgressPct = 46U;
+        if (!Stepper_IsBusy(&motor_j2) && phaseMs == 0U) {
+            (void)Stepper_MoveTo(&motor_j2, BREW_J2_DOWN_STEPS);
+        }
+        if (!Stepper_IsBusy(&motor_j2) && phaseMs > 80U) {
+            s_brewPhase = BREW_PHASE_DISPENSE_UP;
+            s_brewPhaseTick = now;
+        }
+        break;
+
+    case BREW_PHASE_DISPENSE_UP:
+        s_brewUiStep = 2U;
+        s_brewProgressPct = 55U;
+        if (!Stepper_IsBusy(&motor_j2) && phaseMs == 0U) {
+            (void)Stepper_MoveTo(&motor_j2, BREW_J2_UP_STEPS);
+        }
+        if (!Stepper_IsBusy(&motor_j2) && phaseMs > 80U) {
+            s_brewPhase = BREW_PHASE_ADD_WATER;
+            s_brewPhaseTick = now;
+            HAL_GPIO_WritePin(PUMP_GPIO_Port, PUMP_Pin, GPIO_PIN_SET);
+            HAL_GPIO_WritePin(BOIL_GPIO_Port, BOIL_Pin, GPIO_PIN_SET);
+        }
+        break;
+
+    case BREW_PHASE_ADD_WATER:
+        s_brewUiStep = 3U;
+        s_brewProgressPct = (uint8_t)(56U + ((phaseMs * 24U) / waterMs));
+        if (s_brewProgressPct > 80U) {
+            s_brewProgressPct = 80U;
+        }
+        if (phaseMs >= waterMs) {
+            HAL_GPIO_WritePin(PUMP_GPIO_Port, PUMP_Pin, GPIO_PIN_RESET);
+            s_brewPhase = BREW_PHASE_MIXING;
+            s_brewPhaseTick = now;
+            HAL_GPIO_WritePin(MOTOR_KHUAY_GPIO_Port, MOTOR_KHUAY_Pin, GPIO_PIN_SET);
+        }
+        break;
+
+    case BREW_PHASE_MIXING:
+        s_brewUiStep = 4U;
+        s_brewProgressPct = (uint8_t)(81U + ((phaseMs * 14U) / BREW_MIX_TIME_MS));
+        if (s_brewProgressPct > 95U) {
+            s_brewProgressPct = 95U;
+        }
+        if (phaseMs >= BREW_MIX_TIME_MS) {
+            HAL_GPIO_WritePin(MOTOR_KHUAY_GPIO_Port, MOTOR_KHUAY_Pin, GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(BOIL_GPIO_Port, BOIL_Pin, GPIO_PIN_RESET);
+            s_brewPhase = BREW_PHASE_FINISH;
+            s_brewPhaseTick = now;
+            s_brewUiStep = 5U;
+            s_brewProgressPct = 96U;
+        }
+        break;
+
+    case BREW_PHASE_FINISH:
+        s_brewUiStep = 5U;
+        s_brewProgressPct = 99U;
+        if (phaseMs >= BREW_FINISH_MS) {
+            Brew_ResetPacketServos();
+            s_brewPhase = BREW_PHASE_DONE;
+            s_brewProgressPct = 100U;
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    if (s_brewPhase == BREW_PHASE_ERROR) {
+        Brew_StopAllActuators();
+        Brew_ResetPacketServos();
+    }
+}
+
+static void Motion_PauseNonStepperTasks(void)
+{
+    if (defaultTaskHandle != NULL) {
+        vTaskSuspend(defaultTaskHandle);
+    }
+}
+
+static void Motion_ResumeNonStepperTasks(void)
+{
+    if (defaultTaskHandle != NULL) {
+        vTaskResume(defaultTaskHandle);
+    }
+}
+
+static void Motion_WaitJ1DoneExclusive(void)
+{
+    Motion_PauseNonStepperTasks();
+    while (Stepper_IsBusy(&motor_j1)) {
+        taskYIELD();
+    }
+    Motion_ResumeNonStepperTasks();
+}
+
+static HAL_StatusTypeDef Ui_OledUpdateRecover(void)
+{
+    HAL_StatusTypeDef st;
+
+    st = OLED_Update();
+    if (st == HAL_OK) {
+        return st;
+    }
+
+    /* I2C bus or OLED may glitch; re-init and retry once. */
+    MX_I2C1_Init();
+    if (!OLED_Init(&hi2c1)) {
+        return HAL_ERROR;
+    }
+
+    return OLED_Update();
+}
+
 
 static void Ui_RenderHome(void)
 {
@@ -458,14 +755,14 @@ static void Ui_RenderHome(void)
     OLED_IconDrawCafeState(0, 13, Ui_SizeToLevel(s_homeSize), true, true);
     OLED_DrawTextXY(54, 15, line, OLED_FONT_BIG);
     OLED_DrawTextXY(0, 50, "* Enter / # Setiing", OLED_FONT_SMALL);
-    (void)OLED_Update();
+    (void)Ui_OledUpdateRecover();
 }
 
 static void Ui_RenderBoot(void)
 {
     OLED_IconShowCafeLogoCentered(true, false);
     Oled_PrintCenteredTop(7U, "COFFEE         MAKER");
-    (void)OLED_Update();
+    (void)Ui_OledUpdateRecover();
 }
 
 static void Ui_RenderSimpleScreen(const char *l1, const char *l2, const char *l3, bool showStatus)
@@ -480,7 +777,7 @@ static void Ui_RenderSimpleScreen(const char *l1, const char *l2, const char *l3
     if (l3 != NULL) {
         Oled_PrintCenteredTop(5U, l3);
     }
-    (void)OLED_Update();
+    (void)Ui_OledUpdateRecover();
 }
 
 static void Ui_RenderProgress(uint8_t percent)
@@ -500,27 +797,11 @@ static void Ui_RenderProgress(uint8_t percent)
 
 static void Ui_RenderBrewing(void)
 {
-    uint32_t elapsedMs;
-    uint8_t percent;
-    uint8_t step;
-
-    elapsedMs = (uint32_t)(xTaskGetTickCount() - s_brewStartTick) * (uint32_t)portTICK_PERIOD_MS;
-    if (elapsedMs >= s_brewDurationMs) {
-        percent = 100U;
-        step = 5U;
-    } else {
-        percent = (uint8_t)((elapsedMs * 100U) / s_brewDurationMs);
-        step = (uint8_t)((elapsedMs * 6U) / s_brewDurationMs);
-        if (step > 5U) {
-            step = 5U;
-        }
-    }
-
     OLED_Clear();
     OLED_DrawTextXY(24, 0, "BREWING", OLED_FONT_BIG);
-    Oled_PrintCenteredTop(3U, s_brewStepName[step]);
-    Ui_RenderProgress(percent);
-    (void)OLED_Update();
+    Oled_PrintCenteredTop(3U, s_brewStepName[s_brewUiStep]);
+    Ui_RenderProgress(s_brewProgressPct);
+    (void)Ui_OledUpdateRecover();
 }
 
 static void Ui_RenderComplete(void)
@@ -528,7 +809,7 @@ static void Ui_RenderComplete(void)
     OLED_Clear();
     Oled_PrintCenteredTop(1U, "ENJOY YOUR COFFEE");
     OLED_IconDrawCafeState(40, 13, Ui_SizeToLevel(s_homeSize), true, true);
-    (void)OLED_Update();
+    (void)Ui_OledUpdateRecover();
 }
 
 static void Ui_RenderSettings(void)
@@ -543,7 +824,7 @@ static void Ui_RenderSettings(void)
     OLED_DrawTextXY(0, 24, item1, OLED_FONT_SMALL);
     OLED_DrawTextXY(0, 36, item2, OLED_FONT_SMALL);
     OLED_DrawTextXY(15, 50, "* Enter / # back", OLED_FONT_SMALL);
-    (void)OLED_Update();
+    (void)Ui_OledUpdateRecover();
 }
 
 static void Ui_RenderPacketEditor(void)
@@ -555,7 +836,7 @@ static void Ui_RenderPacketEditor(void)
     (void)snprintf(line, sizeof(line), " %02u ", (unsigned int)s_packetEdit);
     OLED_DrawTextXY(26, 24, line, OLED_FONT_BIG);
     OLED_DrawTextXY(15, 50, "* Enter / # back", OLED_FONT_SMALL);
-    (void)OLED_Update();
+    (void)Ui_OledUpdateRecover();
 }
 
 static void Ui_RenderSystemInfo(void)
@@ -569,7 +850,7 @@ static void Ui_RenderSystemInfo(void)
     (void)snprintf(line, sizeof(line), "WATER: %s  CUP: %s", Ui_WaterOk() ? "OK" : "LOW", Ui_CupPresent() ? "OK" : "NO");
     OLED_DrawTextXY(0, 28, line, OLED_FONT_SMALL);
     OLED_DrawTextXY(70, 50, "# back", OLED_FONT_SMALL);
-    (void)OLED_Update();
+    (void)Ui_OledUpdateRecover();
 }
 
 static void Ui_RenderCleaning(void)
@@ -577,7 +858,7 @@ static void Ui_RenderCleaning(void)
     OLED_Clear();
     Oled_PrintCenteredTop(7U, "CLEANING");
     OLED_DrawTextXY(15, 50, "* Enter / # back", OLED_FONT_SMALL);
-    (void)OLED_Update();
+    (void)Ui_OledUpdateRecover();
 }
 
 static void Ui_EnterState(UiState_t next)
@@ -587,11 +868,10 @@ static void Ui_EnterState(UiState_t next)
     s_forceRender = true;
 
     if (next == UI_BREWING) {
-        s_brewStartTick = s_stateTick;
-        s_brewDurationMs = (uint32_t)s_sizeMl[s_homeSize] * 80U;
-        if (s_brewDurationMs < 8000U) {
-            s_brewDurationMs = 8000U;
-        }
+        Brew_Start();
+    }
+    if (next != UI_BREWING) {
+        s_brewPhase = BREW_PHASE_IDLE;
     }
 }
 
@@ -613,7 +893,7 @@ static void Ui_RenderCurrent(void)
         OLED_DrawTextXY(15, 34,"LOW WATER",OLED_FONT_BIG);
         OLED_DrawTextXY(14, 54,"REFILL WATER TANK",OLED_FONT_SMALL);
         OLED_DrawTextXY(118, 0, "#", OLED_FONT_SMALL);
-        (void)OLED_Update();
+        (void)Ui_OledUpdateRecover();
         break;
     case UI_NO_CUP:
         OLED_Clear();
@@ -621,7 +901,7 @@ static void Ui_RenderCurrent(void)
         OLED_DrawTextXY(15, 34,"PLACE CUP",OLED_FONT_BIG);
         OLED_DrawTextXY(10, 54,"INSERT CUP TO START",OLED_FONT_SMALL);
         OLED_DrawTextXY(118, 0, "#", OLED_FONT_SMALL);
-        (void)OLED_Update();
+        (void)Ui_OledUpdateRecover();
         break;
     case UI_NO_COFFEE:
         OLED_Clear();
@@ -629,7 +909,7 @@ static void Ui_RenderCurrent(void)
         OLED_DrawTextXY(15, 34,"NO COFFEE",OLED_FONT_BIG);
         OLED_DrawTextXY(10, 54,"LOAD COFFEE PACKETS",OLED_FONT_SMALL);
         OLED_DrawTextXY(118, 0, "#", OLED_FONT_SMALL);
-        (void)OLED_Update();
+        (void)Ui_OledUpdateRecover();
         break;
     case UI_BREWING:
         Ui_RenderBrewing();
@@ -658,7 +938,6 @@ static void Ui_HandleState(void)
 {
     TickType_t now = xTaskGetTickCount();
     uint32_t elapsedMs = (uint32_t)(now - s_stateTick) * (uint32_t)portTICK_PERIOD_MS;
-    uint32_t brewMs = (uint32_t)(now - s_brewStartTick) * (uint32_t)portTICK_PERIOD_MS;
 
     switch (s_uiState) {
     case UI_BOOT:
@@ -711,24 +990,34 @@ static void Ui_HandleState(void)
         break;
     case UI_BREWING:
         if (Ui_TakeShort(BTN_BACK_IDX)) {
-            HAL_GPIO_WritePin(MOTOR_KHUAY_GPIO_Port, MOTOR_KHUAY_Pin, GPIO_PIN_RESET);
-            HAL_GPIO_WritePin(PUMP_GPIO_Port, PUMP_Pin, GPIO_PIN_RESET);
+            Brew_Abort();
             Ui_EnterState(UI_HOME);
             break;
         }
-        if (brewMs >= s_brewDurationMs) {
+
+
+
+        s_forceRender = true;
+        if (s_brewPhase == BREW_PHASE_DONE) {
             if (s_packetCount > 0U) {
                 s_packetCount--;
                 Ui_SavePacketCount(s_packetCount);
             }
+            Brew_Abort();
             Ui_EnterState(UI_COMPLETE);
             Ui_TakeShort(BTN_ENTER_IDX); // tránh trường hợp nhấn đúp khiến màn hình complete thoát luôn
+        } else if (s_brewPhase == BREW_PHASE_ERROR) {
+            Brew_Abort();
+            Ui_EnterState(UI_HOME);
         }
+
+
         break;
     case UI_COMPLETE:
         if (Ui_TakeShort(BTN_ENTER_IDX) || Ui_TakeShort(BTN_BACK_IDX)) {
             Ui_EnterState(UI_HOME);
         }
+
         break;
     case UI_SETTINGS:
         if (Ui_TakeShort(BTN_UP_IDX) && s_settingsIndex > 0U) {
@@ -800,9 +1089,6 @@ static void Ui_HandleState(void)
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void const * argument)
 {
-  /* init code for USB_DEVICE */
-	osDelay(1000);
-  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN StartDefaultTask */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
@@ -815,14 +1101,12 @@ void StartDefaultTask(void const * argument)
   HAL_GPIO_WritePin(PUMP_GPIO_Port, PUMP_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(BOIL_GPIO_Port, BOIL_Pin, GPIO_PIN_RESET);
 
-    Ui_ConfigButtonExtiHardware();
+  Ui_ConfigButtonExtiHardware();
 
-  oledReady = OLED_Init(&hi2c1);
-  if (!oledReady) {
-      for (;;) {
-          osDelay(1000);
-      }
-  }
+  osDelay(1000);
+    oledReady = OLED_Init(&hi2c1);
+
+  motor_j1.cfg.homeSpeed = 1000;
 
     s_packetCount = Ui_LoadPacketCount();
     s_lastBtnEvent = BTN_COUNT;
@@ -837,7 +1121,7 @@ void StartDefaultTask(void const * argument)
 
       now = xTaskGetTickCount();
       periodicRender = ((now - s_lastRenderTick) >= pdMS_TO_TICKS(BREW_RENDER_MS));
-      if (s_forceRender || (periodicRender && (s_uiState == UI_HOME || s_uiState == UI_BREWING || s_uiState == UI_SYSTEM_INFO))) {
+      if (s_forceRender || (periodicRender && (s_uiState == UI_HOME || s_uiState == UI_BREWING || s_uiState == UI_COMPLETE || s_uiState == UI_SYSTEM_INFO))) {
           Ui_RenderCurrent();
           s_forceRender = false;
           s_lastRenderTick = now;
@@ -861,6 +1145,7 @@ void StartTaskJ1(void const * argument)
   /* USER CODE BEGIN StartTaskJ1 */
     StepperHwConfig hw;
     StepperProfile profile;
+        uint32_t lastStepMs;
 
     osDelay(200);
     hw.htim = &htim2;
@@ -885,10 +1170,23 @@ void StartTaskJ1(void const * argument)
     Stepper_Init(&motor_j1, &hw, &profile);
     Stepper_StartPwm(&motor_j1);
 
+    lastStepMs = HAL_GetTick();
+
     for(;;)
     {
-        Stepper_Process1ms(&motor_j1);
-        osDelay(1);
+        if (Stepper_IsBusy(&motor_j1)) {
+            uint32_t nowMs = HAL_GetTick();
+
+            if (nowMs != lastStepMs) {
+                Stepper_Process1ms(&motor_j1);
+                lastStepMs = nowMs;
+            }
+            taskYIELD();
+        } else {
+            Stepper_Process1ms(&motor_j1);
+            osDelay(1);
+            lastStepMs = HAL_GetTick();
+        }
     }
   /* USER CODE END StartTaskJ1 */
 }
@@ -905,6 +1203,7 @@ void StartTaskJ2(void const * argument)
   /* USER CODE BEGIN StartTaskJ2 */
     StepperHwConfig hw;
     StepperProfile profile;
+        uint32_t lastStepMs;
 
     osDelay(200);
     hw.htim = &htim3;
@@ -929,12 +1228,148 @@ void StartTaskJ2(void const * argument)
     Stepper_Init(&motor_j2, &hw, &profile);
     Stepper_StartPwm(&motor_j2);
 
+    lastStepMs = HAL_GetTick();
+
     for(;;)
     {
-        Stepper_Process1ms(&motor_j2);
-        osDelay(1);
+        if (Stepper_IsBusy(&motor_j2)) {
+            uint32_t nowMs = HAL_GetTick();
+
+            if (nowMs != lastStepMs) {
+                Stepper_Process1ms(&motor_j2);
+                lastStepMs = nowMs;
+            }
+            taskYIELD();
+        } else {
+            Stepper_Process1ms(&motor_j2);
+            osDelay(1);
+            lastStepMs = HAL_GetTick();
+        }
     }
   /* USER CODE END StartTaskJ2 */
+}
+
+/* USER CODE BEGIN Header_StartTaskBrewing */
+/**
+* @brief Function implementing the Brewingtask thread.
+* @param argument: Not used
+* @retval None
+*/
+
+void khaylatup()
+{
+	TIM1->CCR3 = 600;
+	osDelay(1700);
+}
+
+void khayLatngua()
+{
+	TIM1->CCR3=2100;
+	osDelay(1500);
+	TIM1->CCR3=0;
+}
+void khayLock()
+{
+	TIM1->CCR3=2300;
+	osDelay(1000);
+	TIM1->CCR3 = 0;
+}
+void keocat()
+{
+	TIM1->CCR1 = 2300;
+	osDelay(900);
+	TIM1->CCR1 = 1200;
+	osDelay(900);
+}
+void catMiengGoi()
+{
+	  TIM1->CCR2 = 2300;
+	  osDelay(500);
+	  TIM1->CCR2 = 1600;
+	  osDelay(500);
+	  keocat();
+	  TIM1->CCR2 = 1250;
+	  osDelay(500);
+	  keocat();
+	  TIM1->CCR2 = 2300;
+	  osDelay(500);
+	  TIM1->CCR1 = 0;
+	  TIM1->CCR2 = 0;
+}
+void khayRung()
+{
+	Stepper_Enable(&motor_j1, true);
+	long currentpos = motor_j1.position;
+	for(int i=0;i<50;i++)
+	{
+		TIM1->CCR3 = 600;
+		(void)Stepper_MoveTo(&motor_j1, currentpos + 70);
+        Motion_WaitJ1DoneExclusive();
+		TIM1->CCR3 = 800;
+		(void)Stepper_MoveTo(&motor_j1, currentpos-70);
+        Motion_WaitJ1DoneExclusive();
+	}
+}
+
+
+/* USER CODE END Header_StartTaskBrewing */
+void StartTaskBrewing(void const * argument)
+{
+  /* USER CODE BEGIN StartTaskBrewing */
+	osDelay(2000);
+//	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+//	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+//	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+//	TIM1->CCR3=2300;
+	osSemaphoreWait(binarySem_brewingHandle, 0); // Lấy token ban đầu để đưa semaphore về trạng thái khóa
+  /* Infinite loop */
+  for(;;)
+  {
+      int32_t packetIdx;
+      int32_t packetTarget;
+
+	  osSemaphoreWait(binarySem_brewingHandle, osWaitForever);	// chờ lệnh thực thi từ UI
+
+	  // Bước 1: homing & move to packet
+	  s_brewUiStep = 0U;		// thiết lập bước trên giao diện
+	  s_brewProgressPct = 18U;	// thiết lập tiến trình trên giao diện
+      packetIdx = (int32_t)PACKET_MAX - (int32_t)s_packetCount;
+      if (packetIdx < 0) {
+          packetIdx = 0;
+      }
+      if (packetIdx > ((int32_t)PACKET_MAX - 1)) {
+          packetIdx = (int32_t)PACKET_MAX - 1;
+      }
+      packetTarget = (int32_t)offsetToHome + (packetIdx * (int32_t)stepSpaceKhay);
+
+      motor_j1.cfg.homeOffset = packetTarget;
+      (void)Stepper_Home(&motor_j1);
+      Motion_WaitJ1DoneExclusive();
+	  s_brewUiStep = 1U;
+	  s_brewProgressPct = 10U;
+
+	  // Bước 2: Khay Lock : sử dụng động cơ lật gói tì vào khay chứa gói cafe ngăn không cho khay chứa di chuyển trong quá trình cắt miệng gói
+	  osDelay(100);
+	  khayLock();
+	  s_brewProgressPct = 10U;
+	  osDelay(100);
+	  catMiengGoi();
+	  s_brewProgressPct = 20U;
+	  osDelay(100);
+	  khaylatup();
+	  s_brewProgressPct = 30U;
+	  osDelay(100);
+	  khayRung();
+	  s_brewProgressPct = 40U;
+	  osDelay(100);
+	  khayLatngua();
+	  s_brewProgressPct = 50U;
+	  osDelay(100);
+	  s_brewPhase = BREW_PHASE_DONE;
+	  s_brewProgressPct = 100U;
+	  osDelay(10);
+  }
+  /* USER CODE END StartTaskBrewing */
 }
 
 /* Private application code --------------------------------------------------*/

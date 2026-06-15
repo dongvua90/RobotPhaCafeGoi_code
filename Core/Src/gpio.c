@@ -73,17 +73,11 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : SENSOR_COC_Pin */
-  GPIO_InitStruct.Pin = SENSOR_COC_Pin;
+  /*Configure GPIO pins : SENSOR_COC_Pin SENSOR_MUCNUOC_Pin */
+  GPIO_InitStruct.Pin = SENSOR_COC_Pin|SENSOR_MUCNUOC_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(SENSOR_COC_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : SENSOR_MUCNUOC_Pin */
-  GPIO_InitStruct.Pin = SENSOR_MUCNUOC_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(SENSOR_MUCNUOC_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LIM_M1_Pin LIM_M2_Pin */
   GPIO_InitStruct.Pin = LIM_M1_Pin|LIM_M2_Pin;

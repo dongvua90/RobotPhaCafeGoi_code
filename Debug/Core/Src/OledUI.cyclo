@@ -1,0 +1,6 @@
+../Core/Src/OledUI.c:94:6:Ui_RenderBoot	1
+../Core/Src/OledUI.c:104:5:HomeScreen	12
+../Core/Src/OledUI.c:168:6:UI_Brewing	2
+../Core/Src/OledUI.c:186:6:BrewCompleteScreen	2
+../Core/Src/OledUI.c:199:6:PacketEditorScreen	9
+../Core/Src/OledUI.c:251:6:WarningScreen	6

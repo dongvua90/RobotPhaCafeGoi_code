@@ -18,14 +18,17 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "cmsis_os.h"
 #include "i2c.h"
 #include "tim.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "ssd1306.h"
+#include "OledUI.h"
+#include "ssd1306_fonts.h"
+#include <stdbool.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -35,6 +38,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+
+
 
 /* USER CODE END PD */
 
@@ -46,12 +52,11 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+uint8_t countPacket =18;	// số lượng gói cafe
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -59,6 +64,10 @@ void MX_FREERTOS_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 // Pulse Width for Servo: 600->2500
+
+
+
+
 /* USER CODE END 0 */
 
 /**
@@ -97,20 +106,42 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
+  HAL_Delay(100);
+  Ui_RenderBoot();
+  HAL_Delay(2000);
+
   /* USER CODE END 2 */
-
-  /* Call init function for freertos objects (in cmsis_os2.c) */
-  MX_FREERTOS_Init();
-
-  /* Start scheduler */
-  osKernelStart();
-
-  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
+	  int next = HomeScreen();
+	  if(next==1)	// Brewing
+	  {
+	  	  if(!SENSOR_WATER_IS_OK)
+	  	  {
+	  		  WarningScreen(LOW_WATER);
+	  	  }
+	  	  if(!SENSOR_CUP_IS_OK){
+	  		  WarningScreen(NO_CUP);
+	  	  }
+	  	  if(countPacket <=0){
+	  		  WarningScreen(NO_COFFEE);
+	  	  }
+	  	  for(int i=0;i<6;i++)
+	  	  {
+	  		  UI_Brewing(i);
+	  		  HAL_Delay(2000);
+	  	  }
+	  	  BrewCompleteScreen();
+	  }else if(next==2)
+	  {
+	  	  PacketEditorScreen();
+	  }
+
+	  HAL_Delay(1);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

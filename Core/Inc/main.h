@@ -36,7 +36,11 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+typedef enum {
+    LOW_WATER,
+    NO_CUP,
+    NO_COFFEE,
+} WarningState_t;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -53,7 +57,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+extern uint8_t countPacket;	// số lượng gói cafe
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -99,7 +103,15 @@ void Error_Handler(void);
 #define OLED_I2C1_SDA_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
+#define PACKET_MAX 18			// Số gói cafe tối đa
 
+#define BTN_UP_PRESS 	HAL_GPIO_ReadPin(BTN_UP_GPIO_Port, 	 BTN_UP_Pin)	== GPIO_PIN_RESET
+#define BTN_DOWN_PRESS 	HAL_GPIO_ReadPin(BTN_DOWN_GPIO_Port, BTN_DOWN_Pin)	== GPIO_PIN_RESET
+#define BTN_BACK_PRESS 	HAL_GPIO_ReadPin(BTN_BACK_GPIO_Port, BTN_BACK_Pin)	== GPIO_PIN_RESET
+#define BTN_ENTER_PRESS HAL_GPIO_ReadPin(BTN_ENTER_GPIO_Port,BTN_ENTER_Pin)	== GPIO_PIN_RESET
+
+#define SENSOR_WATER_IS_OK 	(HAL_GPIO_ReadPin(SENSOR_MUCNUOC_GPIO_Port, SENSOR_MUCNUOC_Pin)==GPIO_PIN_SET)
+#define SENSOR_CUP_IS_OK 	(HAL_GPIO_ReadPin(SENSOR_COC_GPIO_Port, SENSOR_COC_Pin)==GPIO_PIN_RESET)
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

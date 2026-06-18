@@ -10,6 +10,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+extern int8_t levelWater;
+
 const char *s_brewStepName[6] = {
     "   POSITIONING   ",
     "  CUTTING PACKET ",
@@ -103,7 +105,6 @@ void Ui_RenderBoot()
 // Hàm hiển thị màn hình chính, nhấn up/down để chọn mức nước, nhấn * trả về 1, nhấn # trả về 2
 int HomeScreen()
 {
-	int8_t levelWater = 1;
 	ssd1306_Fill(Black);
 	ssd1306_DrawBitmap(0,0,icon_cafe_mid_42x41,42,41,White);
 	ssd1306_SetCursor(85, 0);

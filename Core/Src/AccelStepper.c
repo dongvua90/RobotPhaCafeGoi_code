@@ -1,6 +1,7 @@
 
 #include "AccelStepper.h"
 
+
 void AccelStepper_init(struct AccelStepperData * AccelMotor,TIM_HandleTypeDef htim,uint16_t startPosition, uint32_t maxSpeed,uint32_t maxAccel){
   //khoi tao thu vien
 	AccelMotor->_currentPos = 0;
@@ -211,10 +212,10 @@ void step(struct AccelStepperData * AccelMotor)
 			HAL_GPIO_WritePin(AccelMotor->GPIO_PORT_Enable,AccelMotor->GPIO_PIN_Enable,GPIO_PIN_SET);
 	}
 	switch(AccelMotor->TIM_CHANEL){
-			case TIM_CHANNEL_1: AccelMotor->USER_TIMER->CCR1=2; break;
-			case TIM_CHANNEL_2: AccelMotor->USER_TIMER->CCR2=2; break;
-			case TIM_CHANNEL_3: AccelMotor->USER_TIMER->CCR3=2; break;
-			case TIM_CHANNEL_4: AccelMotor->USER_TIMER->CCR4=2; break;
+			case TIM_CHANNEL_1: AccelMotor->USER_TIMER->CCR1=30; break;
+			case TIM_CHANNEL_2: AccelMotor->USER_TIMER->CCR2=30; break;
+			case TIM_CHANNEL_3: AccelMotor->USER_TIMER->CCR3=30; break;
+			case TIM_CHANNEL_4: AccelMotor->USER_TIMER->CCR4=30; break;
 		}
 //	AccelMotor->isComplete = 0;
 }

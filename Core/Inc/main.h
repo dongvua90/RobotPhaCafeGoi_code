@@ -83,8 +83,8 @@ extern uint8_t countPacket;	// số lượng gói cafe
 #define BOIL_GPIO_Port GPIOB
 #define MOTOR_KHUAY_Pin GPIO_PIN_14
 #define MOTOR_KHUAY_GPIO_Port GPIOB
-#define PUMP_Pin GPIO_PIN_15
-#define PUMP_GPIO_Port GPIOB
+#define BTN_DOWN_Pin GPIO_PIN_15
+#define BTN_DOWN_GPIO_Port GPIOB
 #define TIM1_CH1_KEO_Pin GPIO_PIN_8
 #define TIM1_CH1_KEO_GPIO_Port GPIOA
 #define TIM1_CH2_KEOTHOTHUT_Pin GPIO_PIN_9
@@ -93,8 +93,8 @@ extern uint8_t countPacket;	// số lượng gói cafe
 #define BTN_ENTER_GPIO_Port GPIOB
 #define BTN_BACK_Pin GPIO_PIN_5
 #define BTN_BACK_GPIO_Port GPIOB
-#define BTN_DOWN_Pin GPIO_PIN_6
-#define BTN_DOWN_GPIO_Port GPIOB
+#define TIM4_CH1_PUMP_Pin GPIO_PIN_6
+#define TIM4_CH1_PUMP_GPIO_Port GPIOB
 #define BTN_UP_Pin GPIO_PIN_7
 #define BTN_UP_GPIO_Port GPIOB
 #define OLED_I2C1_SCL_Pin GPIO_PIN_8

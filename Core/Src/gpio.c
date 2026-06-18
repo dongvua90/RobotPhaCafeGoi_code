@@ -57,7 +57,7 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, J1_DIR_Pin|J1_EN_Pin|J2_DIR_Pin|J2_EN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, BOIL_Pin|MOTOR_KHUAY_Pin|PUMP_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, BOIL_Pin|MOTOR_KHUAY_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : LED_Pin */
   GPIO_InitStruct.Pin = LED_Pin;
@@ -79,16 +79,16 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LIM_M1_Pin LIM_M2_Pin BTN_ENTER_Pin BTN_BACK_Pin
-                           BTN_DOWN_Pin BTN_UP_Pin */
-  GPIO_InitStruct.Pin = LIM_M1_Pin|LIM_M2_Pin|BTN_ENTER_Pin|BTN_BACK_Pin
-                          |BTN_DOWN_Pin|BTN_UP_Pin;
+  /*Configure GPIO pins : LIM_M1_Pin LIM_M2_Pin BTN_DOWN_Pin BTN_ENTER_Pin
+                           BTN_BACK_Pin BTN_UP_Pin */
+  GPIO_InitStruct.Pin = LIM_M1_Pin|LIM_M2_Pin|BTN_DOWN_Pin|BTN_ENTER_Pin
+                          |BTN_BACK_Pin|BTN_UP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : BOIL_Pin MOTOR_KHUAY_Pin PUMP_Pin */
-  GPIO_InitStruct.Pin = BOIL_Pin|MOTOR_KHUAY_Pin|PUMP_Pin;
+  /*Configure GPIO pins : BOIL_Pin MOTOR_KHUAY_Pin */
+  GPIO_InitStruct.Pin = BOIL_Pin|MOTOR_KHUAY_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

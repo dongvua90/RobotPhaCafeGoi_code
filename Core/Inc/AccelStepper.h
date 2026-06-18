@@ -74,6 +74,7 @@ void step(struct AccelStepperData * AccelMotor);
 char isRunning(struct AccelStepperData * AccelMotor);
 void setCurentPos(struct AccelStepperData * AccelMotor,long position);
 void moveTo(struct AccelStepperData * AccelMotor,long absoluted);
+void moveTo(struct AccelStepperData * AccelMotor,long absoluted);
 void enableStepper(struct AccelStepperData * AccelMotor,enum boolean onOff);
 void setSpeed(struct AccelStepperData * AccelMotor,float speed);
 
